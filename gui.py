@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QSystemTrayIcon, 
     QMenu, QAction, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QTextEdit, QSpinBox, QDateEdit, 
-    QComboBox, QMessageBox, QGroupBox, QGridLayout
+    QComboBox, QMessageBox, QGroupBox, QGridLayout, QCheckBox
 )
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor
@@ -54,6 +54,7 @@ class SettingsWindow(QWidget):
         # Working Hours
         hours_group = QGroupBox("Working Hours")
         hours_layout = QGridLayout()
+        hours_layout.setContentsMargins(10, 10, 10, 10)  # Add margins
         hours_layout.setVerticalSpacing(10)  # Add spacing between rows
         
         # Start time
@@ -197,7 +198,7 @@ QMenu::item:selected {
 class MeetingCoordinatorMenu(QSystemTrayIcon):
     def __init__(self):
         super().__init__()
-        print(f"Debug - MeetingCoordinatorMenu methods: {dir(self)}")
+        #print(f"Debug - MeetingCoordinatorMenu methods: {dir(self)}")
 
         # Load configuration
         self.config = load_config()
@@ -292,33 +293,12 @@ class CheckAvailabilityWindow(QWidget):
         self.config = load_config()
         self.available_calendars = list_calendars()
         self.date_widgets = []
+
+        # Working hours state
+        self.temp_working_hours = None  # Will store temporary override
         
         # Setup UI
         self.setup_ui()
-
-    """
-    def refresh_config(self):
-        self.config = load_config()
-        self.available_calendars = list_calendars()
-        # Update the calendar combo box if needed
-        current_cal_index = self.available_calendars.index(self.config['selected_calendar'])
-        self.calendar_combo.setCurrentIndex(current_cal_index)
-        
-        # Set object name for specific styling
-        self.setObjectName("MenuWidget")
-        
-        # Load configuration
-        self.config = load_config()
-        self.available_calendars = list_calendars()
-        
-        if self.config['selected_calendar'] is None or self.config['selected_calendar'] not in self.available_calendars:
-            self.config = setup_initial_config(self.available_calendars)
-        
-        # Initialize variables
-        self.date_widgets = []
-        
-        # Create layout with smaller margins for menu-like appearance
-        self.setup_ui()"""
         
     def refresh_config(self):
         self.config = load_config()
@@ -348,7 +328,43 @@ class CheckAvailabilityWindow(QWidget):
         calendar_layout.addWidget(calendar_label)
         calendar_layout.addWidget(self.calendar_combo)
         layout.addLayout(calendar_layout)
+
+        # Working Hours Override Group
+        hours_group = QGroupBox("Working Hours")
+        hours_layout = QGridLayout()
+        hours_layout.setContentsMargins(10, 10, 10, 10)  
+        hours_layout.setVerticalSpacing(10)
         
+        # Override checkbox
+        self.override_checkbox = QCheckBox("Override default working hours")
+        self.override_checkbox.stateChanged.connect(self.toggle_working_hours_override)
+        hours_layout.addWidget(self.override_checkbox)
+        
+        # NEW: Override checkbox
+        self.override_checkbox = QCheckBox("Use temporary hours")
+        self.override_checkbox.stateChanged.connect(self.toggle_working_hours_override)
+        hours_layout.addWidget(self.override_checkbox, 0, 0, 1, 2)
+        
+        # NEW: Time inputs
+        hours_layout.addWidget(QLabel("Start:"), 1, 0)
+        self.temp_start_time = QLineEdit()
+        self.temp_start_time = QLineEdit(self.config['working_hours']['start'])
+        self.temp_start_time.setMinimumWidth(100)
+        self.temp_start_time.setMinimumHeight(32)
+        self.temp_start_time.setEnabled(False)
+        hours_layout.addWidget(self.temp_start_time, 1, 1)
+        
+        hours_layout.addWidget(QLabel("End:"), 2, 0)
+        self.temp_end_time = QLineEdit()
+        self.temp_end_time = QLineEdit(self.config['working_hours']['end'])
+        self.temp_end_time.setMinimumWidth(100)
+        self.temp_end_time.setMinimumHeight(32)
+        self.temp_end_time.setEnabled(False)
+        hours_layout.addWidget(self.temp_end_time, 2, 1)
+        
+        hours_group.setLayout(hours_layout)
+        layout.addWidget(hours_group)
+
         # Date selection
         date_edit = QDateEdit()
         date_edit.setDate(QDate.currentDate())
@@ -395,9 +411,44 @@ class CheckAvailabilityWindow(QWidget):
         
         self.setFixedSize(300, 500)  # Increased height for calendar selection
 
+    # NEW: Add these methods to CheckAvailabilityWindow
+    def toggle_working_hours_override(self, state):
+        """Enable/disable temporary working hours override"""
+        enabled = bool(state)
+        self.temp_start_time.setEnabled(enabled)
+        self.temp_end_time.setEnabled(enabled)
+        
+        if enabled:
+            self.temp_start_time.setText(self.config['working_hours']['start'])
+            self.temp_end_time.setText(self.config['working_hours']['end'])
+        else:
+            self.temp_start_time.clear()
+            self.temp_end_time.clear()
+
+    def get_working_hours(self):
+        """Get either temporary or default working hours"""
+        if self.override_checkbox.isChecked():
+            start = self.temp_start_time.text().strip()
+            end = self.temp_end_time.text().strip()
+            
+            time_format = "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
+            if not (re.match(time_format, start) and re.match(time_format, end)):
+                QMessageBox.warning(self, "Invalid Time Format", 
+                                "Please enter times in HH:MM format (e.g., 09:00)")
+                return None
+                
+            return {'start': start, 'end': end}
+        
+        return self.config['working_hours']
+    
     def check_availability(self):
         self.results_text.clear()
         
+        # NEW: Get working hours (temporary or default)
+        working_hours = self.get_working_hours()
+        if working_hours is None:
+            return
+
         try:
             # Get selected calendar
             selected_calendar = self.calendar_combo.currentText()
@@ -420,14 +471,14 @@ class CheckAvailabilityWindow(QWidget):
                 if not timezone_str:
                     self.results_text.setText("Could not determine timezone for the given location.")
                     return
-            
+                
             # Check availability for each date
             all_available_slots = {}
             for target_date in selected_dates:
                 available_slots = get_available_slots(
                     selected_calendar,
                     target_date,
-                    self.config['working_hours'],
+                    working_hours,
                     duration,
                     timezone_str
                 )
