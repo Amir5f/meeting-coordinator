@@ -14,7 +14,8 @@ from datetime import datetime, timedelta
 from config import load_config, setup_initial_config
 import pytz
 from main import (list_calendars, get_events_for_date, parse_calendar_events,
-                 get_available_slots, format_multiple_days_email, get_location_timezone)
+                 get_available_slots, format_multiple_days_email, get_location_timezone,
+                 CalendarAccessError)
 
 
 class SettingsWindow(QWidget):
@@ -329,38 +330,28 @@ class CheckAvailabilityWindow(QWidget):
         calendar_layout.addWidget(self.calendar_combo)
         layout.addLayout(calendar_layout)
 
-        # Working Hours Override Group
+        # Working Hours Group
         hours_group = QGroupBox("Working Hours")
         hours_layout = QGridLayout()
         hours_layout.setContentsMargins(10, 10, 10, 10)  
         hours_layout.setVerticalSpacing(10)
         
-        # Override checkbox
-        self.override_checkbox = QCheckBox("Override default working hours")
-        self.override_checkbox.stateChanged.connect(self.toggle_working_hours_override)
-        hours_layout.addWidget(self.override_checkbox)
-        
-        # NEW: Override checkbox
-        self.override_checkbox = QCheckBox("Use temporary hours")
-        self.override_checkbox.stateChanged.connect(self.toggle_working_hours_override)
-        hours_layout.addWidget(self.override_checkbox, 0, 0, 1, 2)
-        
-        # NEW: Time inputs
-        hours_layout.addWidget(QLabel("Start:"), 1, 0)
-        self.temp_start_time = QLineEdit()
+        # Time inputs - always enabled and pre-populated with default hours
+        hours_layout.addWidget(QLabel("Start:"), 0, 0)
         self.temp_start_time = QLineEdit(self.config['working_hours']['start'])
         self.temp_start_time.setMinimumWidth(100)
         self.temp_start_time.setMinimumHeight(32)
-        self.temp_start_time.setEnabled(False)
-        hours_layout.addWidget(self.temp_start_time, 1, 1)
+        hours_layout.addWidget(self.temp_start_time, 0, 1)
         
-        hours_layout.addWidget(QLabel("End:"), 2, 0)
-        self.temp_end_time = QLineEdit()
+        hours_layout.addWidget(QLabel("End:"), 1, 0)
         self.temp_end_time = QLineEdit(self.config['working_hours']['end'])
         self.temp_end_time.setMinimumWidth(100)
         self.temp_end_time.setMinimumHeight(32)
-        self.temp_end_time.setEnabled(False)
-        hours_layout.addWidget(self.temp_end_time, 2, 1)
+        hours_layout.addWidget(self.temp_end_time, 1, 1)
+        
+        # Save as default checkbox
+        self.save_default_checkbox = QCheckBox("Save as default hours")
+        hours_layout.addWidget(self.save_default_checkbox, 2, 0, 1, 2)        
         
         hours_group.setLayout(hours_layout)
         layout.addWidget(hours_group)
@@ -411,45 +402,46 @@ class CheckAvailabilityWindow(QWidget):
         
         self.setFixedSize(300, 500)  # Increased height for calendar selection
 
-    # NEW: Add these methods to CheckAvailabilityWindow
-    def toggle_working_hours_override(self, state):
-        """Enable/disable temporary working hours override"""
-        enabled = bool(state)
-        self.temp_start_time.setEnabled(enabled)
-        self.temp_end_time.setEnabled(enabled)
-        
-        if enabled:
-            self.temp_start_time.setText(self.config['working_hours']['start'])
-            self.temp_end_time.setText(self.config['working_hours']['end'])
-        else:
-            self.temp_start_time.clear()
-            self.temp_end_time.clear()
-
     def get_working_hours(self):
-        """Get either temporary or default working hours"""
-        if self.override_checkbox.isChecked():
-            start = self.temp_start_time.text().strip()
-            end = self.temp_end_time.text().strip()
-            
-            time_format = "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
-            if not (re.match(time_format, start) and re.match(time_format, end)):
-                QMessageBox.warning(self, "Invalid Time Format", 
-                                "Please enter times in HH:MM format (e.g., 09:00)")
-                return None
-                
-            return {'start': start, 'end': end}
+        """Get current working hours and optionally save as default"""
+        start = self.temp_start_time.text().strip()
+        end = self.temp_end_time.text().strip()
         
-        return self.config['working_hours']
+        time_format = "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
+        if not (re.match(time_format, start) and re.match(time_format, end)):
+            QMessageBox.warning(self, "Invalid Time Format", 
+                            "Please enter times in HH:MM format (e.g., 09:00)")
+            return None
+        
+        working_hours = {'start': start, 'end': end}
+        
+        # If save as default is checked, update the config
+        if self.save_default_checkbox.isChecked():
+            self.config['working_hours'] = working_hours.copy()
+            from config import save_config
+            save_config(self.config)
+            self.save_default_checkbox.setChecked(False)  # Reset checkbox after saving
+        
+        return working_hours
     
     def check_availability(self):
         self.results_text.clear()
         
-        # NEW: Get working hours (temporary or default)
-        working_hours = self.get_working_hours()
-        if working_hours is None:
-            return
+
+        # Save reference to the check button
+        check_button = self.sender()
+        if check_button:
+            check_button.setEnabled(False)
+        
+        # Set wait cursor
+        QApplication.setOverrideCursor(Qt.WaitCursor)
 
         try:
+            # Get working hours
+            working_hours = self.get_working_hours()
+            if working_hours is None:
+                return
+
             # Get selected calendar
             selected_calendar = self.calendar_combo.currentText()
             
@@ -463,7 +455,7 @@ class CheckAvailabilityWindow(QWidget):
             # Get duration
             duration = self.duration_input.value()
             
-            # Get location and convert to timezone
+            # Get location and timezone
             location = self.location_input.text()
             timezone_str = None
             if location:
@@ -471,8 +463,8 @@ class CheckAvailabilityWindow(QWidget):
                 if not timezone_str:
                     self.results_text.setText("Could not determine timezone for the given location.")
                     return
-                
-            # Check availability for each date
+            
+            # Process availability
             all_available_slots = {}
             for target_date in selected_dates:
                 available_slots = get_available_slots(
@@ -484,12 +476,18 @@ class CheckAvailabilityWindow(QWidget):
                 )
                 all_available_slots[target_date.date()] = available_slots
             
-            # Format results
+            # Format and display results
             results = format_multiple_days_email(all_available_slots, timezone_str)
             self.results_text.setText(results)
             
         except Exception as e:
             self.results_text.setText(f"An error occurred: {str(e)}")
+        finally:
+            # Restore cursor
+            QApplication.restoreOverrideCursor()
+            # Re-enable the check button
+            if check_button:
+                check_button.setEnabled(True)
 
     def copy_to_clipboard(self):
         clipboard = QApplication.clipboard()

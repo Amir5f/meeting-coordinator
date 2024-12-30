@@ -3,6 +3,10 @@ from datetime import datetime, timedelta
 import pytz
 from config import load_config, setup_initial_config
 
+class CalendarAccessError(Exception):
+    """Custom exception for calendar access errors"""
+    pass
+
 def list_calendars():
     """List all available calendars using AppleScript"""
     apple_script = '''
@@ -29,9 +33,9 @@ def list_calendars():
         print(f"Error accessing calendar: {e}")
         return []
 
+
 def get_events_for_date(calendar_name, target_date):
     """Get events for a specific date from a specific calendar"""
-    date_str = target_date.strftime('%Y-%m-%d')
     apple_script = f'''
     tell application "Calendar"
         tell calendar "{calendar_name}"
@@ -77,7 +81,7 @@ def get_events_for_date(calendar_name, target_date):
             return None
     except Exception as e:
         return None
-    
+
 def parse_calendar_events(events_str):
     """Parse the calendar events string into a list of (start, end) datetime tuples"""
     if not events_str:
