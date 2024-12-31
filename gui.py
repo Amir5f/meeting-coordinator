@@ -301,6 +301,10 @@ class CheckAvailabilityWindow(QWidget):
         # Setup UI
         self.setup_ui()
         
+        # Load last location if it exists
+        if self.config.get('last_location'):
+            self.location_input.setText(self.config['last_location'])        
+        
     def refresh_config(self):
         self.config = load_config()
         self.available_calendars = list_calendars()
@@ -323,9 +327,37 @@ class CheckAvailabilityWindow(QWidget):
         calendar_layout = QHBoxLayout()
         calendar_label = QLabel("Calendar:")
         self.calendar_combo = QComboBox()
-        self.calendar_combo.addItems(self.available_calendars)
-        current_cal_index = self.available_calendars.index(self.config['selected_calendar'])
-        self.calendar_combo.setCurrentIndex(current_cal_index)
+        # Check if we have any calendars at all
+        if not self.available_calendars:
+            QMessageBox.critical(
+                self,
+                "No Calendars Available",
+                "No calendars were found. Please check your Calendar app settings."
+            )
+            # Set a dummy item so the UI doesn't crash
+            self.calendar_combo.addItem("No calendars available")
+        else:
+            self.calendar_combo.addItems(self.available_calendars)
+            # Handle case where saved calendar is no longer available
+            try:
+                current_cal_index = self.available_calendars.index(self.config['selected_calendar'])
+                self.calendar_combo.setCurrentIndex(current_cal_index)
+            except ValueError:
+                # If saved calendar not found, show error and default to first available
+                self.calendar_combo.setCurrentIndex(0)
+                # Update the config with the new calendar
+                self.config['selected_calendar'] = self.available_calendars[0]
+                from config import save_config
+                save_config(self.config)
+                
+                QMessageBox.warning(
+                    self,
+                    "Calendar Not Found",
+                    f"Previously selected calendar '{self.config['selected_calendar']}' is no longer available.\n"
+                    f"Defaulting to '{self.available_calendars[0]}'.\n\n"
+                    "You can select a different calendar from the dropdown."
+                )
+        
         calendar_layout.addWidget(calendar_label)
         calendar_layout.addWidget(self.calendar_combo)
         layout.addLayout(calendar_layout)
@@ -426,9 +458,7 @@ class CheckAvailabilityWindow(QWidget):
     
     def check_availability(self):
         self.results_text.clear()
-        
-
-        # Save reference to the check button
+        # Disable the check button while processing
         check_button = self.sender()
         if check_button:
             check_button.setEnabled(False)
@@ -437,6 +467,41 @@ class CheckAvailabilityWindow(QWidget):
         QApplication.setOverrideCursor(Qt.WaitCursor)
 
         try:
+        # Verify calendar access first
+            try:
+                available_calendars = list_calendars()
+                current_calendar = self.calendar_combo.currentText()
+                
+                if current_calendar not in available_calendars:
+                    response = QMessageBox.warning(
+                        self,
+                        "Calendar Not Available",
+                        f"The selected calendar '{current_calendar}' is no longer available.\n\n"
+                        "Would you like to select a different calendar?",
+                        QMessageBox.Yes | QMessageBox.Cancel
+                    )
+                    
+                    if response == QMessageBox.Yes:
+                        # Update calendar combo box
+                        self.calendar_combo.clear()
+                        self.calendar_combo.addItems(available_calendars)
+                        
+                        # Show calendar selection dialog
+                        calendar_dialog = QMessageBox(self)
+                        calendar_dialog.setIcon(QMessageBox.Question)
+                        calendar_dialog.setWindowTitle("Select Calendar")
+                        calendar_dialog.setText("Please select a calendar from the dropdown and try again.")
+                        calendar_dialog.exec_()
+                    return
+                
+            except Exception as calendar_error:
+                QMessageBox.critical(
+                    self,
+                    "Calendar Access Error",
+                    str(calendar_error)
+                )
+                return
+            
             # Get working hours
             working_hours = self.get_working_hours()
             if working_hours is None:
@@ -459,6 +524,11 @@ class CheckAvailabilityWindow(QWidget):
             location = self.location_input.text()
             timezone_str = None
             if location:
+                # Save the location to config
+                self.config['last_location'] = location
+                from config import save_config
+                save_config(self.config)
+
                 timezone_str = get_location_timezone(location)
                 if not timezone_str:
                     self.results_text.setText("Could not determine timezone for the given location.")

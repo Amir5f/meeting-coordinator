@@ -8,7 +8,8 @@ DEFAULT_CONFIG = {
     'working_hours': {
         'start': '11:00',
         'end': '19:00'
-    }
+    },
+    'last_location': ''
 }
 
 CONFIG_FILE = os.path.expanduser('~/.meeting_coordinator_config.json')

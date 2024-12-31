@@ -25,14 +25,17 @@ def list_calendars():
                               text=True)
         if result.returncode == 0:
             calendars = result.stdout.strip().split(', ')
+            if not calendars or calendars == ['']:
+                raise Exception("No calendars found. Please ensure Calendar app is set up.")
             return calendars
         else:
-            print("Error:", result.stderr)
-            return []
+            error_msg = result.stderr.strip()
+            if "not authorized" in error_msg.lower():
+                raise Exception("Calendar access not authorized. Please check System Settings > Privacy & Security > Calendars.")
+            else:
+                raise Exception(f"Failed to access Calendar app: {error_msg}")
     except Exception as e:
-        print(f"Error accessing calendar: {e}")
-        return []
-
+        raise Exception(f"Calendar Error: {str(e)}")
 
 def get_events_for_date(calendar_name, target_date):
     """Get events for a specific date from a specific calendar"""
