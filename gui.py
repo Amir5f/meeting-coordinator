@@ -346,6 +346,7 @@ class CheckAvailabilityWindow(QWidget):
                 # If saved calendar not found, show error and default to first available
                 self.calendar_combo.setCurrentIndex(0)
                 # Update the config with the new calendar
+                previous_calendar = self.config['selected_calendar']
                 self.config['selected_calendar'] = self.available_calendars[0]
                 from config import save_config
                 save_config(self.config)
@@ -353,7 +354,7 @@ class CheckAvailabilityWindow(QWidget):
                 QMessageBox.warning(
                     self,
                     "Calendar Not Found",
-                    f"Previously selected calendar '{self.config['selected_calendar']}' is no longer available.\n"
+                    f"Previously selected calendar '{previous_calendar}' is no longer available.\n"
                     f"Defaulting to '{self.available_calendars[0]}'.\n\n"
                     "You can select a different calendar from the dropdown."
                 )

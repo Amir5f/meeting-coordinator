@@ -342,7 +342,7 @@ def format_multiple_days_email(all_slots, timezone="Local Time"):
             
             # Combine all time ranges for this day
             times = ", ".join(time_ranges)
-            available_days.append(f"{date_str} between {times}")
+            available_days.append(f"On {date_str}, I am available to meet in any of the following times:\n{times}")
     
     if not available_days:
         return "I don't have any availability during the requested dates."
