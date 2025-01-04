@@ -241,19 +241,25 @@ class MeetingCoordinatorMenu(QSystemTrayIcon):
         self.menu.setStyleSheet(STYLESHEET)
         
         # Add menu items
+        check_action_icon_path = os.path.join(os.path.dirname(__file__), 'resources', 'calendar-search.png')        
         check_action = QAction("Check Availability", self)
+        check_action.setIcon(QIcon(check_action_icon_path))
         check_action.triggered.connect(self.show_window)
         self.menu.addAction(check_action)
         
         self.menu.addSeparator()
         
         settings_action = QAction("Settings", self)
+        settings_action_icon_path = os.path.join(os.path.dirname(__file__), 'resources', 'settings.png')
+        settings_action.setIcon(QIcon(settings_action_icon_path))
         settings_action.triggered.connect(self.show_settings)
         self.menu.addAction(settings_action)
         
         self.menu.addSeparator()
         
         quit_action = QAction("Quit", self)
+        quit_action_icon_path = os.path.join(os.path.dirname(__file__), 'resources', 'log-out.png')
+        quit_action.setIcon(QIcon(quit_action_icon_path))
         quit_action.triggered.connect(app.quit)
         self.menu.addAction(quit_action)
         
