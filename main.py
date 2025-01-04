@@ -1,6 +1,7 @@
 import subprocess
 from datetime import datetime, timedelta
 import pytz
+import time
 from config import load_config, setup_initial_config
 
 class CalendarAccessError(Exception):
@@ -120,11 +121,15 @@ def parse_calendar_events(events_str):
 
 def get_available_slots(calendar_name, target_date, working_hours, duration_minutes=60, target_tz=None):
     """Find available time slots for a given date"""
+
     # Set up timezone info
+    tz_start = time.time()# Debugging
     local_tz = pytz.timezone('Asia/Jerusalem')  # Your local timezone
     target_pytz = pytz.timezone(target_tz) if target_tz else local_tz
+    print(f"Timezone setup took: {time.time() - tz_start:.2f} seconds")# Debugging
     
     # Create datetime objects with timezone info
+    setup_start = time.time()
     date_str = target_date.strftime('%Y-%m-%d')
     day_start = local_tz.localize(datetime.strptime(f"{date_str} {working_hours['start']}", '%Y-%m-%d %H:%M'))
     day_end = local_tz.localize(datetime.strptime(f"{date_str} {working_hours['end']}", '%Y-%m-%d %H:%M'))
@@ -133,10 +138,16 @@ def get_available_slots(calendar_name, target_date, working_hours, duration_minu
     if target_tz:
         day_start = day_start.astimezone(target_pytz)
         day_end = day_end.astimezone(target_pytz)
+    print(f"DateTime setup took: {time.time() - setup_start:.2f} seconds") # Debugging    
     
     # Get busy periods
+    events_start = time.time()    
     events_str = get_events_for_date(calendar_name, target_date)
+    print(f"AppleScript calendar query took: {time.time() - events_start:.2f} seconds")    
+
+    parse_start = time.time()
     busy_periods = parse_calendar_events(events_str)
+    print(f"Event parsing took: {time.time() - parse_start:.2f} seconds")
     
     # Add timezone info to event times and convert to target timezone
     target_events = []

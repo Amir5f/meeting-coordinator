@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import re
+import time
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QSystemTrayIcon, 
     QMenu, QAction, QHBoxLayout, QLabel, QLineEdit, 
@@ -207,16 +208,25 @@ class MeetingCoordinatorMenu(QSystemTrayIcon):
             self.config = setup_initial_config(list_calendars())
         
         
-        # Create a simple icon programmatically
-        from PyQt5.QtGui import QPixmap, QPainter, QColor
-        icon_pixmap = QPixmap(64, 64)
-        icon_pixmap.fill(Qt.transparent)
-        painter = QPainter(icon_pixmap)
-        painter.setBrush(QColor('#0078D4'))  # Blue color
-        painter.setPen(Qt.NoPen)
-        painter.drawEllipse(8, 8, 48, 48)  # Draw a circle
-        painter.end()
-        self.setIcon(QIcon(icon_pixmap))
+        # Set the application icon from resources
+        import os
+        resources_path = os.path.join(os.path.dirname(__file__), 'resources')
+        icon_path = os.path.join(resources_path, 'icon_64x64.png')  # Adjust filename as needed
+        
+        if os.path.exists(icon_path):
+            self.setIcon(QIcon(icon_path))
+        else:
+            print(f"Warning: Icon file not found at {icon_path}")
+            # Create a simple icon programmatically
+            from PyQt5.QtGui import QPixmap, QPainter, QColor
+            icon_pixmap = QPixmap(64, 64)
+            icon_pixmap.fill(Qt.transparent)
+            painter = QPainter(icon_pixmap)
+            painter.setBrush(QColor('#0078D4'))  # Blue color
+            painter.setPen(Qt.NoPen)
+            painter.drawEllipse(8, 8, 48, 48)  # Draw a circle
+            painter.end()
+            self.setIcon(QIcon(icon_pixmap))
         
         # Create the tray menu
         self.menu = QMenu()
@@ -474,10 +484,14 @@ class CheckAvailabilityWindow(QWidget):
         QApplication.setOverrideCursor(Qt.WaitCursor)
 
         try:
-        # Verify calendar access first
+            total_start = time.time() # Debug
+            print(f"\n=== Performance Log ===") # Debug
+            cal_start = time.time() # Debug
+
             try:
                 available_calendars = list_calendars()
                 current_calendar = self.calendar_combo.currentText()
+                print(f"Calendar check took: {time.time() - cal_start:.2f} seconds")
                 
                 if current_calendar not in available_calendars:
                     response = QMessageBox.warning(
@@ -510,24 +524,30 @@ class CheckAvailabilityWindow(QWidget):
                 return
             
             # Get working hours
+            hours_start = time.time()            # Debug
             working_hours = self.get_working_hours()
+            print(f"Working hours check took: {time.time() - hours_start:.2f} seconds")
             if working_hours is None:
                 return
 
             # Get selected calendar
-            selected_calendar = self.calendar_combo.currentText()
+            selected_calendar = self.calendar_combo.currentText() # Debug
             
             # Get selected dates
+            dates_start = time.time()             # Debug
             selected_dates = []
             for date_widget in self.date_widgets:
                 qdate = date_widget.date()
                 date = datetime(qdate.year(), qdate.month(), qdate.day())
                 selected_dates.append(date)
-            
+            print(f"Date processing took: {time.time() - dates_start:.2f} seconds") # Debug
+
+
             # Get duration
             duration = self.duration_input.value()
             
             # Get location and timezone
+            loc_start = time.time()            
             location = self.location_input.text()
             timezone_str = None
             if location:
@@ -540,10 +560,14 @@ class CheckAvailabilityWindow(QWidget):
                 if not timezone_str:
                     self.results_text.setText("Could not determine timezone for the given location.")
                     return
+            print(f"Location/timezone processing took: {time.time() - loc_start:.2f} seconds")# Debug
             
             # Process availability
+            slots_start = time.time() # Debug            
             all_available_slots = {}
             for target_date in selected_dates:
+                print(f"\nProcessing date: {target_date.strftime('%Y-%m-%d')}") # Debug
+                event_fetch_start = time.time() # Debug
                 available_slots = get_available_slots(
                     selected_calendar,
                     target_date,
@@ -551,12 +575,20 @@ class CheckAvailabilityWindow(QWidget):
                     duration,
                     timezone_str
                 )
+                print(f"Event fetch and slot calculation took: {time.time() - event_fetch_start:.2f} seconds") # Debug
                 all_available_slots[target_date.date()] = available_slots
+            print(f"Total slots processing took: {time.time() - slots_start:.2f} seconds")# Debug
+
             
             # Format and display results
+            format_start = time.time()            # Debug
             results = format_multiple_days_email(all_available_slots, timezone_str)
             self.results_text.setText(results)
+            print(f"Results formatting took: {time.time() - format_start:.2f} seconds")# Debug
             
+            print(f"\nTotal execution time: {time.time() - total_start:.2f} seconds")
+            print("===================\n")
+
         except Exception as e:
             self.results_text.setText(f"An error occurred: {str(e)}")
         finally:
@@ -576,6 +608,15 @@ def main():
     
     # Don't quit when last window is closed (since we're a menu bar app)
     app.setQuitOnLastWindowClosed(False)
+
+    # Set application-wide icon
+    app_icon_path = os.path.join(os.path.dirname(__file__), 'resources', 'icon_64x64.png')
+
+    
+    if os.path.exists(app_icon_path):
+        app.setWindowIcon(QIcon(app_icon_path))
+    else:
+        print(f"Warning: Icon file not found at {app_icon_path}")
     
     menu = MeetingCoordinatorMenu()
     sys.exit(app.exec_())
