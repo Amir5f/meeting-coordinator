@@ -23,7 +23,7 @@ def load_config():
             
         with open(CONFIG_FILE, 'r') as f:
             config = json.load(f)
-            print(f"Loaded config from file: {config}")
+            # print(f"Loaded config from file: {config}")
             return config
     except FileNotFoundError:
         print("Config file not found, using default")

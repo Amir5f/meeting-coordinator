@@ -1,20 +1,9 @@
-import subprocess
 from datetime import datetime, timedelta
 import pytz
 import time
 from config import load_config, setup_initial_config
 from calendar_access import CalendarAccess, CalendarAccessError
 
-
-def get_events_for_date(calendar_name, target_date):
-    """Get events for a specific date from a specific calendar"""
-    try:
-        calendar_access = CalendarAccess.get_instance()
-        return calendar_access.get_events_for_date(calendar_name, target_date)
-    except Exception as e:
-        print(f"Error getting events: {str(e)}")
-        return None
-    
 class CalendarAccessError(Exception):
     """Custom exception for calendar access errors"""
     pass
@@ -103,40 +92,6 @@ def get_available_slots(calendar_name, target_date, working_hours, duration_minu
             valid_slots.append((start, end))
     
     return valid_slots
-
-def parse_calendar_events(events_str):
-    """Parse the calendar events string into a list of (start, end) datetime tuples"""
-    if not events_str:
-        return []
-
-    events = []
-    # Split by 'date ' to get individual date strings
-    date_strings = events_str.split('date ')[1:]  # Skip the first empty element
-    
-    # Process pairs of dates (start and end times)
-    for i in range(0, len(date_strings), 2):
-        if i + 1 >= len(date_strings):
-            break
-            
-        try:
-            # Remove trailing commas and clean up the strings
-            start_str = date_strings[i].strip().rstrip(',')
-            end_str = date_strings[i + 1].strip().rstrip(',')
-            
-            # Parse the date strings into datetime objects
-            start = datetime.strptime(start_str, '%A, %d %B %Y at %H:%M:%S')
-            end = datetime.strptime(end_str, '%A, %d %B %Y at %H:%M:%S')
-            
-            # Only add events that aren't all-day (00:00 to 23:59)
-            if not (start.hour == 0 and start.minute == 0 and 
-                   end.hour == 23 and end.minute == 59):
-                events.append((start, end))
-                
-        except ValueError as e:
-            continue
-
-    return events
-
 
 def format_slots_for_email(slots, timezone="Local Time"):
     """Format available slots into email-friendly text"""

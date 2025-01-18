@@ -14,8 +14,7 @@ from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor
 from datetime import datetime, timedelta
 from config import load_config, setup_initial_config
 import pytz
-from main import (list_calendars, get_events_for_date, parse_calendar_events,
-                 get_available_slots, format_multiple_days_email, get_location_timezone,
+from main import (list_calendars, get_available_slots, format_multiple_days_email, get_location_timezone,
                  CalendarAccessError)
 
 

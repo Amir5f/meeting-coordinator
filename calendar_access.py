@@ -1,14 +1,5 @@
 from datetime import datetime
-from Foundation import (
-    NSDate, 
-    NSCalendar, 
-    NSCalendarUnitYear, 
-    NSCalendarUnitMonth, 
-    NSCalendarUnitDay,
-    NSCalendarUnitHour,
-    NSCalendarUnitMinute,
-    NSCalendarUnitSecond
-)
+from Foundation import NSDate
 from EventKit import (
     EKEventStore, 
     EKSpan, 
