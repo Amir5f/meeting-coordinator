@@ -7,9 +7,9 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QSystemTrayIcon, 
     QMenu, QAction, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QTextEdit, QSpinBox, QDateEdit, 
-    QComboBox, QMessageBox, QGroupBox, QGridLayout, QCheckBox
+    QComboBox, QMessageBox, QGroupBox, QGridLayout, QCheckBox, QSizePolicy
 )
-from PyQt5.QtCore import Qt, QDate
+from PyQt5.QtCore import Qt, QDate, QTimer
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor
 from datetime import datetime, timedelta
 from config import load_config, setup_initial_config
@@ -42,6 +42,8 @@ class SettingsWindow(QWidget):
         # Calendar Selection
         calendar_group = QGroupBox("Default Calendar")
         calendar_layout = QVBoxLayout()
+        calendar_layout.setContentsMargins(10, 10, 10, 10)
+
         self.calendar_combo = QComboBox()
         available_calendars = list_calendars()
         self.calendar_combo.addItems(available_calendars)
@@ -83,7 +85,7 @@ class SettingsWindow(QWidget):
         save_button.clicked.connect(self.save_settings)
         layout.addWidget(save_button)
         
-        self.setFixedSize(300, 250)
+        self.setMinimumWidth(450)  
 
         
     def save_settings(self):
@@ -182,6 +184,8 @@ QTextEdit {
     border: 1px solid #3C3C3C;
     border-radius: 4px;
     padding: 4px;
+    min-height: 80px;
+    max-height: 400px;
 }
 QLabel {
     color: #D4D4D4;  /* VSCode text color */
@@ -197,46 +201,36 @@ QMenu::item:selected {
 """
 
 class MeetingCoordinatorMenu(QSystemTrayIcon):
+    def setup_window(self):
+        self.window = CheckAvailabilityWindow()
+
     def __init__(self):
         super().__init__()
-        #print(f"Debug - MeetingCoordinatorMenu methods: {dir(self)}")
-
-        # Load configuration
+        self.menu = QMenu()
+        self.setContextMenu(self.menu)
+        self.window = None
         self.config = load_config()
         if self.config is None:
             self.config = setup_initial_config(list_calendars())
         
-        
-        # Set the application icon from resources
-        import os
+        # Set icon
         resources_path = os.path.join(os.path.dirname(__file__), 'resources')
-        icon_path = os.path.join(resources_path, 'icon_64x64.png')  # Adjust filename as needed
+        icon_path = os.path.join(resources_path, 'icon_64x64.png')
         
         if os.path.exists(icon_path):
             self.setIcon(QIcon(icon_path))
         else:
-            print(f"Warning: Icon file not found at {icon_path}")
-            # Create a simple icon programmatically
-            from PyQt5.QtGui import QPixmap, QPainter, QColor
             icon_pixmap = QPixmap(64, 64)
             icon_pixmap.fill(Qt.transparent)
             painter = QPainter(icon_pixmap)
-            painter.setBrush(QColor('#0078D4'))  # Blue color
+            painter.setBrush(QColor('#0078D4'))
             painter.setPen(Qt.NoPen)
-            painter.drawEllipse(8, 8, 48, 48)  # Draw a circle
+            painter.drawEllipse(8, 8, 48, 48)
             painter.end()
             self.setIcon(QIcon(icon_pixmap))
         
-        # Create the tray menu
-        self.menu = QMenu()
-        self.setContextMenu(self.menu)
-        
-        # Add actions to menu
         self.setup_menu()
-        
-        # Create the main window (hidden by default)
-        self.window = CheckAvailabilityWindow()
-        
+        self.setup_window()
         self.show()
 
     def refresh_config(self):
@@ -278,7 +272,25 @@ class MeetingCoordinatorMenu(QSystemTrayIcon):
         self.settings_window = SettingsWindow(self.config, self)  # Pass self (the menu instance)
         self.settings_window.show()
 
+    
     def show_window(self):
+        # Create new window instance if needed
+        if not hasattr(self, 'window') or not self.window:
+            self.window = CheckAvailabilityWindow()
+        
+        geometry = self.geometry()
+        window_x = geometry.x() - (self.window.width() // 2)
+        window_y = 25
+        
+        screen = QApplication.primaryScreen().geometry()
+        window_x = max(0, min(window_x, screen.width() - self.window.width()))
+        
+        self.window.move(window_x, window_y)
+        self.window.show()
+        self.window.raise_()
+        self.window.activateWindow()
+
+    def delete_show_window(self):
         # Get the geometry of the menu bar icon
         geometry = self.geometry()
         
@@ -335,11 +347,13 @@ class CheckAvailabilityWindow(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
-        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
         
         # Calendar selection
+        calendar_group = QGroupBox("Calendar")
         calendar_layout = QHBoxLayout()
+        calendar_layout.setContentsMargins(10, 10, 10, 10)        
         calendar_label = QLabel("Calendar:")
         self.calendar_combo = QComboBox()
         # Check if we have any calendars at all
@@ -410,8 +424,21 @@ class CheckAvailabilityWindow(QWidget):
         date_edit.setCalendarPopup(True)
         date_edit.setMinimumDate(QDate.currentDate())
         date_edit.setMinimumHeight(32)
-        self.date_widgets.append(date_edit)
-        layout.addWidget(date_edit)
+        self.dates_group = QGroupBox("Select Dates")
+        self.dates_layout = QVBoxLayout()
+        
+        # Initial date field
+        self.add_date_field()
+        
+        # Add date button
+        add_date_button = QPushButton("+ Add Date")
+        add_date_button.clicked.connect(self.add_date_field)
+        self.dates_layout.addWidget(add_date_button)
+        
+        self.dates_group.setLayout(self.dates_layout)
+        self.dates_group.setContentsMargins(10, 10, 10, 10)
+        self.dates_layout.setSpacing(10)
+        layout.addWidget(self.dates_group)
         
         # Duration input
         duration_layout = QHBoxLayout()
@@ -437,18 +464,53 @@ class CheckAvailabilityWindow(QWidget):
         layout.addWidget(check_button)
         
         # Results area
+        results_group = QGroupBox("Results")
+        results_layout = QVBoxLayout()
         self.results_text = QTextEdit()
         self.results_text.setReadOnly(True)
         self.results_text.setPlaceholderText("Available time slots will appear here...")
-        self.results_text.setMaximumHeight(80)
-        layout.addWidget(self.results_text)
+        self.results_text.setSizeAdjustPolicy(QTextEdit.AdjustToContents)
+        self.results_text.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        results_layout.addWidget(self.results_text)
+        results_group.setLayout(results_layout)
+        layout.addWidget(results_group)
         
         # Copy button
         copy_button = QPushButton("Copy to Clipboard")
         copy_button.clicked.connect(self.copy_to_clipboard)
         layout.addWidget(copy_button)
         
-        self.setFixedSize(300, 500)  # Increased height for calendar selection
+        self.setMinimumWidth(400)
+
+    def add_date_field(self):
+        date_row = QHBoxLayout()
+        
+        date_edit = QDateEdit()
+        date_edit.setDate(QDate.currentDate())
+        date_edit.setCalendarPopup(True)
+        date_edit.setMinimumDate(QDate.currentDate())
+        date_edit.setMinimumHeight(32)
+        self.date_widgets.append(date_edit)
+        
+        remove_button = QPushButton("×")
+        remove_button.setMaximumWidth(30)
+        remove_button.clicked.connect(lambda: self.remove_date_field(date_row, date_edit))
+        
+        date_row.addWidget(date_edit)
+        date_row.addWidget(remove_button)
+        
+        # Insert before the add button
+        self.dates_layout.insertLayout(self.dates_layout.count() - 1, date_row)
+
+    def remove_date_field(self, date_row, date_edit):
+        if len(self.date_widgets) > 1:
+            self.date_widgets.remove(date_edit)
+            while date_row.count():
+                item = date_row.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            date_row.deleteLater()
+
 
     def get_working_hours(self):
         """Get current working hours and optionally save as default"""
