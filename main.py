@@ -3,133 +3,40 @@ from datetime import datetime, timedelta
 import pytz
 import time
 from config import load_config, setup_initial_config
+from calendar_access import CalendarAccess, CalendarAccessError
 
-class CalendarAccessError(Exception):
-    """Custom exception for calendar access errors"""
-    pass
-
-def list_calendars():
-    """List all available calendars using AppleScript"""
-    apple_script = '''
-    tell application "Calendar"
-        set cal_list to {}
-        repeat with cal in calendars
-            copy (name of cal) to the end of cal_list
-        end repeat
-        return cal_list
-    end tell
-    '''
-    
-    try:
-        result = subprocess.run(['osascript', '-e', apple_script], 
-                              capture_output=True, 
-                              text=True)
-        if result.returncode == 0:
-            calendars = result.stdout.strip().split(', ')
-            if not calendars or calendars == ['']:
-                raise Exception("No calendars found. Please ensure Calendar app is set up.")
-            return calendars
-        else:
-            error_msg = result.stderr.strip()
-            if "not authorized" in error_msg.lower():
-                raise Exception("Calendar access not authorized. Please check System Settings > Privacy & Security > Calendars.")
-            else:
-                raise Exception(f"Failed to access Calendar app: {error_msg}")
-    except Exception as e:
-        raise Exception(f"Calendar Error: {str(e)}")
 
 def get_events_for_date(calendar_name, target_date):
     """Get events for a specific date from a specific calendar"""
-    apple_script = f'''
-    tell application "Calendar"
-        tell calendar "{calendar_name}"
-            set targetYear to {target_date.year}
-            set targetMonth to {target_date.month}
-            set targetDay to {target_date.day}
-            
-            set targetDate to current date
-            set year of targetDate to targetYear
-            set month of targetDate to targetMonth
-            set day of targetDate to targetDay
-            set time of targetDate to 0
-            
-            set dayEnd to targetDate + 1 * days
-            set theEvents to {{}}
-            
-            -- Get events for the target date
-            set foundEvents to (every event whose start date ≥ targetDate and start date < dayEnd)
-            repeat with currentEvent in foundEvents
-                -- Only include events that have specific start and end times (not all-day)
-                set eventStart to start date of currentEvent
-                set eventEnd to end date of currentEvent
-                
-                -- If event has specific times (not 00:00 to 23:59)
-                if (time of eventStart is not 0 or time of eventEnd is not ((23 * 60 * 60) + (59 * 60))) then
-                    set end of theEvents to {{eventStart, eventEnd}}
-                end if
-            end repeat
-            return theEvents
-        end tell
-    end tell
-    '''
-    
     try:
-        result = subprocess.run(['osascript', '-e', apple_script], 
-                              stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE,
-                              text=True)
-        
-        if result.returncode == 0:
-            return result.stdout
-        else:
-            return None
+        calendar_access = CalendarAccess.get_instance()
+        return calendar_access.get_events_for_date(calendar_name, target_date)
     except Exception as e:
+        print(f"Error getting events: {str(e)}")
         return None
-
-def parse_calendar_events(events_str):
-    """Parse the calendar events string into a list of (start, end) datetime tuples"""
-    if not events_str:
-        return []
-
-    events = []
-    # Split by 'date ' to get individual date strings
-    date_strings = events_str.split('date ')[1:]  # Skip the first empty element
     
-    # Process pairs of dates (start and end times)
-    for i in range(0, len(date_strings), 2):
-        if i + 1 >= len(date_strings):
-            break
-            
-        try:
-            # Remove trailing commas and clean up the strings
-            start_str = date_strings[i].strip().rstrip(',')
-            end_str = date_strings[i + 1].strip().rstrip(',')
-            
-            # Parse the date strings into datetime objects
-            start = datetime.strptime(start_str, '%A, %d %B %Y at %H:%M:%S')
-            end = datetime.strptime(end_str, '%A, %d %B %Y at %H:%M:%S')
-            
-            # Only add events that aren't all-day (00:00 to 23:59)
-            if not (start.hour == 0 and start.minute == 0 and 
-                   end.hour == 23 and end.minute == 59):
-                events.append((start, end))
-                
-        except ValueError as e:
-            continue
-
-    return events
+class CalendarAccessError(Exception):
+    """Custom exception for calendar access errors"""
+    pass
+    
+def list_calendars():
+    """List all available calendars"""
+    try:
+        calendar_access = CalendarAccess.get_instance()
+        calendars = calendar_access.list_calendars()
+        if not calendars:
+            raise CalendarAccessError("No calendars found. Please ensure Calendar app is set up.")
+        return calendars
+    except Exception as e:
+        raise CalendarAccessError(f"Failed to access calendars: {str(e)}")
 
 def get_available_slots(calendar_name, target_date, working_hours, duration_minutes=60, target_tz=None):
     """Find available time slots for a given date"""
-
     # Set up timezone info
-    tz_start = time.time()# Debugging
     local_tz = pytz.timezone('Asia/Jerusalem')  # Your local timezone
     target_pytz = pytz.timezone(target_tz) if target_tz else local_tz
-    print(f"Timezone setup took: {time.time() - tz_start:.2f} seconds")# Debugging
     
     # Create datetime objects with timezone info
-    setup_start = time.time()
     date_str = target_date.strftime('%Y-%m-%d')
     day_start = local_tz.localize(datetime.strptime(f"{date_str} {working_hours['start']}", '%Y-%m-%d %H:%M'))
     day_end = local_tz.localize(datetime.strptime(f"{date_str} {working_hours['end']}", '%Y-%m-%d %H:%M'))
@@ -138,16 +45,16 @@ def get_available_slots(calendar_name, target_date, working_hours, duration_minu
     if target_tz:
         day_start = day_start.astimezone(target_pytz)
         day_end = day_end.astimezone(target_pytz)
-    print(f"DateTime setup took: {time.time() - setup_start:.2f} seconds") # Debugging    
     
-    # Get busy periods
-    events_start = time.time()    
-    events_str = get_events_for_date(calendar_name, target_date)
-    print(f"AppleScript calendar query took: {time.time() - events_start:.2f} seconds")    
-
-    parse_start = time.time()
-    busy_periods = parse_calendar_events(events_str)
-    print(f"Event parsing took: {time.time() - parse_start:.2f} seconds")
+    # Get busy periods using new calendar access
+    try:
+        calendar_access = CalendarAccess.get_instance()
+        busy_periods = calendar_access.get_events_for_date(calendar_name, target_date)
+        if busy_periods is None:
+            return []
+    except Exception as e:
+        print(f"Error getting events: {str(e)}")
+        return []
     
     # Add timezone info to event times and convert to target timezone
     target_events = []
@@ -196,6 +103,40 @@ def get_available_slots(calendar_name, target_date, working_hours, duration_minu
             valid_slots.append((start, end))
     
     return valid_slots
+
+def parse_calendar_events(events_str):
+    """Parse the calendar events string into a list of (start, end) datetime tuples"""
+    if not events_str:
+        return []
+
+    events = []
+    # Split by 'date ' to get individual date strings
+    date_strings = events_str.split('date ')[1:]  # Skip the first empty element
+    
+    # Process pairs of dates (start and end times)
+    for i in range(0, len(date_strings), 2):
+        if i + 1 >= len(date_strings):
+            break
+            
+        try:
+            # Remove trailing commas and clean up the strings
+            start_str = date_strings[i].strip().rstrip(',')
+            end_str = date_strings[i + 1].strip().rstrip(',')
+            
+            # Parse the date strings into datetime objects
+            start = datetime.strptime(start_str, '%A, %d %B %Y at %H:%M:%S')
+            end = datetime.strptime(end_str, '%A, %d %B %Y at %H:%M:%S')
+            
+            # Only add events that aren't all-day (00:00 to 23:59)
+            if not (start.hour == 0 and start.minute == 0 and 
+                   end.hour == 23 and end.minute == 59):
+                events.append((start, end))
+                
+        except ValueError as e:
+            continue
+
+    return events
+
 
 def format_slots_for_email(slots, timezone="Local Time"):
     """Format available slots into email-friendly text"""
@@ -415,3 +356,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+    

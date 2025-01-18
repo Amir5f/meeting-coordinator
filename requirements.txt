@@ -14,3 +14,7 @@ pytz==2024.2
 six==1.17.0
 timezonefinder==6.2.0
 tzdata==2024.2
+pyobjc-framework-Foundation
+pyobjc-framework-EventKit>=11.0
+pyobjc>=11.0
+pyobjc-core>=11.0
