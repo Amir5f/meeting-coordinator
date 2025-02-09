@@ -23,6 +23,7 @@ class SettingsWindow(QWidget):
         super().__init__()
         self.setWindowTitle("Settings")
         self.setStyleSheet(STYLESHEET)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         self.current_config = current_config
         self.menu_instance = menu_instance  # Changed name to be more explicit
         self.current_start_time = current_config['working_hours']['start']
@@ -258,6 +259,12 @@ class MeetingCoordinatorMenu(QSystemTrayIcon):
         settings_action.triggered.connect(self.show_settings)
         self.menu.addAction(settings_action)
         
+        about_action = QAction("About", self)
+        about_action_icon_path = os.path.join(os.path.dirname(__file__), 'resources', 'icon_64x64.png')
+        about_action.setIcon(QIcon(about_action_icon_path))
+        about_action.triggered.connect(self.show_about)
+        self.menu.addAction(about_action)
+
         self.menu.addSeparator()
         
         quit_action = QAction("Quit", self)
@@ -272,7 +279,10 @@ class MeetingCoordinatorMenu(QSystemTrayIcon):
         self.settings_window = SettingsWindow(self.config, self)  # Pass self (the menu instance)
         self.settings_window.show()
 
-    
+    def show_about(self):
+        self.about_window = AboutWindow()
+        self.about_window.show()
+
     def show_window(self):
         # Create new window instance if needed
         if not hasattr(self, 'window') or not self.window:
@@ -662,6 +672,48 @@ class CheckAvailabilityWindow(QWidget):
     def copy_to_clipboard(self):
         clipboard = QApplication.clipboard()
         clipboard.setText(self.results_text.toPlainText())
+
+class AboutWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("About Meeting Coordinator")
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #E5E5E5;
+            }
+            QLabel {
+                color: #000000;
+                background-color: #E5E5E5;
+            }
+        """)        
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        icon_label = QLabel()
+        icon_path = os.path.join(os.path.dirname(__file__), 'resources', 'icon_128x128.png')
+        if os.path.exists(icon_path):
+            pixmap = QPixmap(icon_path)
+            icon_label.setPixmap(pixmap)
+            icon_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(icon_label)
+        
+        title = QLabel("Meeting Coordinator")
+        title.setStyleSheet("font-size: 18px; font-weight: bold; background-color: #E5E5E5;")
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+        
+        version = QLabel("Version: 0.7")
+        version.setStyleSheet("color: #666;")
+        layout.addWidget(version)
+        
+        copyright = QLabel("Copyright © 2025 Amir Fischer. All rights reserved.")
+        copyright.setWordWrap(True)
+        layout.addWidget(copyright)
+        
+        self.setFixedSize(300, 280)
 
 def main():
     global app  # Make app global so it can be accessed by the quit action
