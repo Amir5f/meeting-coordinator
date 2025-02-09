@@ -10,7 +10,7 @@ A macOS menu bar application for finding and communicating meeting availability 
 - Email-friendly output
 
 ## Installation
-1. Download latest [release](link-to-releases)
+1. Download latest [release]([link-to-releases](https://github.com/Amir5f/meeting-coordinator/releases))
 2. Move to Applications
 3. Right-click > Open (first time)
 4. Grant calendar access when prompted
